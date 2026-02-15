@@ -10,7 +10,7 @@ AI: Chatgpt
 #include <stdlib.h>
 
 #ifndef N
-#define N 5   /* Number of full rotations around the ring */
+#define N 2   /* Number of full rotations around the ring */
 #endif
 
 int main(int argc, char *argv[])
