@@ -35,11 +35,29 @@ int main(int argc, char **argv){
         local_total = local_total + ( vector1[index] * vector2[index] );
     }
 
-    cout << "my local total is: " << local_total << endl;
+    //cout << "my local total is: " << local_total << endl;
     /*now, local_total is the dot product of our chunk of the global vector, we need to do a tree reduction 
     to combine everything*/
+    int deciding_value = 0;
+    bool done = 0;
+    int stride = 1;
+    int recieved_value;
+    while(!done && stride <= SIZE){
+        deciding_value = myRank / stride;
+        if(deciding_value % 2 == 0){ //im a reciever
+            MPI_Recv(&recieved_value, 1, MPI_INT, myRank + stride, 0, comm, MPI_STATUS_IGNORE);
+            local_total = local_total + recieved_value;
+        }
+        else{ //im a sender
+            MPI_Send(&local_total, 1, MPI_INT, myRank - stride, 0, comm);
+            done = true;
+        }
+        stride *= 2;
+    }
     
-    
+    if(myRank == 0){
+        cout << "The final sum is: " << local_total << endl;
+    }
 
     MPI_Finalize(); 
 }
