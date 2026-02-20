@@ -4,6 +4,7 @@ Vector * Vector dot product
 
 #include <iostream>
 #include "mpi.h"
+#include <vector>
 
 using namespace std;
 
