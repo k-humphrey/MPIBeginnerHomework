@@ -26,10 +26,19 @@ int main(int argc, char **argv){
     int ibegin = SIZE * (myRank) / PROCESSES;
     int iend = SIZE * (myRank + 1) / PROCESSES;
     int nsize = iend - ibegin;
+    //cout << "Ibegin : " << ibegin << " Iend: " << iend << " Nsize: " << nsize << endl;
 
-    cout << "Ibegin : " << ibegin << " Iend: " << iend << " Nsize: " << nsize << endl;
+    //now we need to multiply each value and add it up for ourselves.
+    int local_total = 0;
+    for(int index = ibegin; index < iend; index++){
+        local_total = local_total + ( vector1[index] * vector2[index] );
+    }
+
+    cout << "my local total is: " << local_total << endl;
+    /*now, local_total is the dot product of our chunk of the global vector, we need to do a tree reduction 
+    to combine everything*/
+    
+    
+
     MPI_Finalize(); 
-
-
-
 }
