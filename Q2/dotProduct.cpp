@@ -11,8 +11,8 @@ using namespace std;
 int main(int argc, char **argv){
     int SIZE = atoi(argv[1]);
     //two vectors of size SIZE initialized to be all ones.
-    vector<int> vector1(SIZE, 1);
-    vector<int> vector2(SIZE, 1);
+    vector<int> vector1(SIZE, 2);
+    vector<int> vector2(SIZE, 2);
     //cout << "Expected output: " << SIZE << endl;
 
     //mpi init
@@ -40,24 +40,31 @@ int main(int argc, char **argv){
     to combine everything*/
     int deciding_value = 0;
     bool done = 0;
-    int stride = 1;
+    int stride = 1, source, destination;
     int recieved_value;
-    while(!done && stride <= SIZE / 2){
+
+    while(!done && stride < PROCESSES){
         deciding_value = myRank / stride;
+        
         if(deciding_value % 2 == 0){ //im a reciever
-            MPI_Recv(&recieved_value, 1, MPI_INT, (myRank + stride), 0, comm, MPI_STATUS_IGNORE);
-            local_total = local_total + recieved_value;
+            source = myRank + stride;
+                if(source < PROCESSES){
+                    MPI_Recv(&recieved_value, 1, MPI_INT, source, 0, comm, MPI_STATUS_IGNORE);
+                    local_total = local_total + recieved_value;
+                }
         }
         else{ //im a sender
-            MPI_Send(&local_total, 1, MPI_INT, (myRank - stride), 0, comm);
+            destination = myRank - stride;
+            MPI_Send(&local_total, 1, MPI_INT, destination, 0, comm);
             done = true;
         }
+        
         stride *= 2;
     }
     
     if(myRank == 0){
         cout << "The final sum is: " << local_total << endl;
     }
-
+    
     MPI_Finalize(); 
 }
