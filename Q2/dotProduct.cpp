@@ -42,14 +42,14 @@ int main(int argc, char **argv){
     bool done = 0;
     int stride = 1;
     int recieved_value;
-    while(!done && stride <= SIZE){
+    while(!done && stride <= SIZE / 2){
         deciding_value = myRank / stride;
         if(deciding_value % 2 == 0){ //im a reciever
-            MPI_Recv(&recieved_value, 1, MPI_INT, myRank + stride, 0, comm, MPI_STATUS_IGNORE);
+            MPI_Recv(&recieved_value, 1, MPI_INT, (myRank + stride), 0, comm, MPI_STATUS_IGNORE);
             local_total = local_total + recieved_value;
         }
         else{ //im a sender
-            MPI_Send(&local_total, 1, MPI_INT, myRank - stride, 0, comm);
+            MPI_Send(&local_total, 1, MPI_INT, (myRank - stride), 0, comm);
             done = true;
         }
         stride *= 2;
