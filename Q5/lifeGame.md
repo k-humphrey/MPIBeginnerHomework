@@ -19,12 +19,7 @@ Workflow:
 
 using namespace std;
 
-// forward decls: mapping functions for linear distributions used in Life
-// 1D just have complete rows in processes, and split evenly as possible
-//
-void forwardLinearMapping(int P, int N, int I, int &p, int &i); 
-void inverseLinearMapping(int P, int N, int p, int i, int &I);
-void partitionSize(int P, int N, int p, int &entries);
+
 
 // 1D life updater
 void do_update(MPI_Comm comm, char *old_map, char *new_map, int m, int N, int my_rank);
@@ -422,15 +417,6 @@ void inverseLinearMapping(int P, int N, int p, int i, int &I)
 }
 #endif
 
-void partitionSize(int P, int N, int p, int &entries)
-{
-   int L = N/P; // nominal amount of entries per partition
-   int R = N%P; // any extras don't fit
-   if (p < R)
-     entries = (L+1);
-   else
-     entries = L;
-}
 
 void print_array(int iteration, char *array, int M, int N, int Mdelta=0, int Ndelta=0)
 {
