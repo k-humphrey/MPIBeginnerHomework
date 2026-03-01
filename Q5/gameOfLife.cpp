@@ -61,9 +61,12 @@ int main(int argc, char** argv){
     partitionSize(process_columns, total_columns, my_col_coord, local_columns);
 
     //allocate local grid (add halos :-) )
-    
-    //everyone calculates their partition of the rows or columns
+    PartitionedGrid worlds(local_rows, local_columns);
+    if(0 == my_rank){worlds.printLocalGrid();}
     //process 0 has to scatter the global array according to displacement and counts that it can calculate
+    if(0 == my_rank){
+
+    }
     //set up loop
     //do updates (each process sends left halo, right halo, top halo, bottom halo, and corners)
     //they recieve the halos too from neighbors
