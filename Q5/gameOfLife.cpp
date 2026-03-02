@@ -8,31 +8,53 @@ using namespace std;
 void partitionSize(int parts, int total, int part_coord, int & return_entries);
 
 int main(int argc, char** argv){
+    PartitionedGrid grid;
     //initialize mpi
     int total_processes = 0, my_rank = 0, iterations = 0, process_rows = 0, process_columns = 0, total_rows = 0, total_columns = 0;
     int share_vector[5];
+    char * global_array = nullptr;
+    char * old_world = nullptr;
+    char * new_world = nullptr;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &total_processes);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
 
-
-    //everyone needs to know process rows and columns so they can partition
     if(0 == my_rank){
         int dims[2] = {0, 0}; //2D
         MPI_Dims_create(total_processes, 2, dims); //let mpi pick the process grid
         process_rows = dims[0];
         process_columns = dims[1];
-        cout << "Rows: " << process_rows << " columns: " << process_columns << endl;
+        cout << "Process rows, columns, " << process_rows << " " << process_columns << endl;
+        //read from file
+        string filename;
+        cout << "Enter a filename that contains your starting seed: ";
+        cin >> filename;
+        ifstream file(filename);
+        if(!file.is_open()){
+            cout << "Error opening file";
+        }
+        //file is open now, read contents into global array
 
-        //use constructor from class object to create grid
-        PartitionedGrid global_world;
-        global_world.printGrid();
+        string line = " "; 
+        getline(file, line); //read first line that contains grid rows and columns
+        stringstream ss(line);
+        ss >> total_rows >> total_columns; 
 
+        //allocate memory for 2d char array
+        global_array = new char[total_rows * total_columns];
+
+        //traverse array, while reading file into it's locations
+        for(int curRow = 0; curRow < total_rows; curRow++){
+            getline(file, line);
+            for(int curCol = 0; curCol < total_columns; curCol++){
+                global_array[curRow * total_columns + curCol] = line[curCol];
+            }
+        }
+
+        //get iterations
         cout << "How many iterations?: ";
         cin >> iterations;    
 
-        total_rows = global_world.getRows();
-        total_columns = global_world.getColumns();
         //share this to every rank so they can partiton things too
         share_vector[0] = total_rows;
         share_vector[1] = total_columns;
@@ -43,6 +65,7 @@ int main(int argc, char** argv){
     }
     //share to everyone
     MPI_Bcast(share_vector, 5, MPI_INT, 0, MPI_COMM_WORLD);
+    //everyone sets variables accordingly
     if (0 != my_rank){
         total_rows = share_vector[0];
         total_columns = share_vector[1];
@@ -51,31 +74,82 @@ int main(int argc, char** argv){
         iterations = share_vector[4];
 
     }
+
     //figure out each processes coordinates on the grid
     int my_row_coord = my_rank / process_columns;
     int my_col_coord = my_rank % process_columns;
 
-    //call partition size to find out how many rows, and how many columns each process needs to have of the global grid
+    //call partition size to find out how many rows and how many columns each process needs to have of the global grid
     int local_rows = 0, local_columns = 0;
     partitionSize(process_rows, total_rows, my_row_coord, local_rows);
     partitionSize(process_columns, total_columns, my_col_coord, local_columns);
+    int entries = local_rows * local_columns;
 
     //allocate local grid (add halos :-) )
-    PartitionedGrid worlds(local_rows, local_columns);
-    if(0 == my_rank){worlds.printLocalGrid();}
-    //process 0 has to scatter the global array according to displacement and counts that it can calculate
-    if(0 == my_rank){
+    local_rows += 2;
+    local_columns += 2;
 
+    old_world = new char[local_rows * local_columns];
+    new_world = new char[local_rows * local_columns];
+
+    //initialize values
+    for(int curRow = 0; curRow < local_rows; curRow++){
+        for(int curCol = 0; curCol < local_columns; curCol++){
+            old_world[curRow * local_columns + curCol] = '@';
+            new_world[curRow * local_columns + curCol] = '#';
+        }
     }
+
+    //gather entries at process 0 (for counts)
+    int recv_buf[total_processes];
+    MPI_Gather(&entries, 1, MPI_INT, recv_buf, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+
+    //process 0 has to scatter the global array according to displacement and counts that it can calculate
+    int counts[total_processes];
+    int displacements[total_processes];
+    if(0 == my_rank){
+        //how many entries does each process get? what index does that start from?
+        counts[0] = recv_buf[0];
+        displacements[0] = 0;
+        for(int i = 1; i < total_processes; i++){
+            counts[i] = recv_buf[i];
+            displacements[i] = displacements[i-1] + counts[i-1];
+        }
+    }
+
+    //scatterv here, put into newworld so that I can format it properly into old world (target destination)
+    MPI_Scatterv(global_array, counts, displacements, MPI_CHAR, new_world, entries , MPI_CHAR, 0, MPI_COMM_WORLD);
+
+    //load new world into old world
+    //we must skip row 1, and last row, col 1 and last column :) those are halos
+    int curEntry = 0;
+    for(int curRow = 1; curRow < local_rows - 1; curRow++){
+        for(int curCol = 1; curCol < local_columns - 1; curCol++){
+            old_world[curRow * local_columns + curCol] = new_world[curEntry];
+            curEntry++;
+        }
+    }
+    
     //set up loop
-    //do updates (each process sends left halo, right halo, top halo, bottom halo, and corners)
-    //they recieve the halos too from neighbors
-    //they calculate what cells die or live, and update locally
-    //gather
-    //print out world
-    //loop again if we need to
+    for(int i = 0; i < iterations; i++){
+        //do updates (each process sends left halo, right halo, top halo, bottom halo, and corners)
+        //they recieve the halos too from neighbors
+        //they calculate what cells die or live, and update locally
+        //gather
+        //print out world
+    }
+    
+   
+    
     //finalize mpi and clean memory
+    delete[] old_world;
+    delete[] new_world;
+    if(0 == my_rank){
+        delete[] global_array;
+    }
     MPI_Finalize();
+    
 }
 
 //gotta call this twice
