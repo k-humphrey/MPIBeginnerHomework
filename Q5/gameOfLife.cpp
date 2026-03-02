@@ -130,12 +130,33 @@ int main(int argc, char** argv){
             curEntry++;
         }
     }
-    
+
     //set up loop
     for(int i = 0; i < iterations; i++){
-        //do updates (each process sends left halo, right halo, top halo, bottom halo, and corners)
-        //they recieve the halos too from neighbors
-        //they calculate what cells die or live, and update locally
+        //post recieves from
+        //up
+        //down
+        //left
+        //right
+        //up left 
+        //up right
+        //down left
+        //down right
+        
+        //send to
+        //up (take my row 1 (-edges) and send to bottom halo of upper neighbor)
+        //down (take my last row - 1 without edges) and send to top halo of lower neighbor)
+        //left (strip my left column out and send to my left neighbors halo)
+        //right (stip my right column out and send to my right neighbors halo)
+        //up left (take my upper left inner corner, send to bottom right corner halo of upper left neighbor)
+        //up right (take my upper right inner corner, send to bottom left corner halo of upper right neighbor)
+        //down left (take my bottom left inner corner, send to upper right corner halo of bottom left neighbor)
+        //down right (take my bottom right inner corner, send to the upper left corner halo of my bottom right neighbor)
+
+        //do updates (every cell)
+
+        //swap old and new
+        //strip halos off to gather
         //gather
         //print out world
     }
