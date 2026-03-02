@@ -15,6 +15,7 @@ int main(int argc, char** argv){
     char * global_array = nullptr;
     char * old_world = nullptr;
     char * new_world = nullptr;
+    char * tempArray = nullptr;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &total_processes);
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
@@ -91,6 +92,7 @@ int main(int argc, char** argv){
 
     old_world = new char[local_rows * local_columns];
     new_world = new char[local_rows * local_columns];
+    tempArray = new char[(local_rows - 2) * (local_columns - 2)];
 
     //initialize values
     for(int curRow = 0; curRow < local_rows; curRow++){
@@ -156,9 +158,17 @@ int main(int argc, char** argv){
         //do updates (every cell)
 
         //swap old and new
+
         //strip halos off to gather
+        grid.stripHalo(tempArray, old_world, local_rows, local_columns); //eventually change to new_world
         //gather
-        //print out world
+        MPI_Gatherv(tempArray, entries, MPI_CHAR, global_array, counts, displacements, MPI_CHAR, 0, MPI_COMM_WORLD);
+        //let rank 0 print out the global array :)
+        if(0 == my_rank){
+            grid.printGrid(global_array, total_rows, total_columns);
+        }
+        
+
     }
     
    
@@ -166,6 +176,7 @@ int main(int argc, char** argv){
     //finalize mpi and clean memory
     delete[] old_world;
     delete[] new_world;
+    delete[] tempArray;
     if(0 == my_rank){
         delete[] global_array;
     }
