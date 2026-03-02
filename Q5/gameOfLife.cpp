@@ -166,6 +166,7 @@ int main(int argc, char** argv){
         grid.stripHalo(tempArray, old_world, local_rows, local_columns); //eventually change to new_world
         //gather
         MPI_Gatherv(tempArray, entries, MPI_CHAR, global_array, counts, displacements, MPI_CHAR, 0, MPI_COMM_WORLD);
+        
         //let rank 0 print out the global array :)
         if(0 == my_rank){
             cout << grid.upLeft << grid.up << grid.upRight << endl;
