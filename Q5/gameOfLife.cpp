@@ -134,9 +134,12 @@ int main(int argc, char** argv){
     }
 
     //set up loop
+    //find my neighbors
+    grid.setNeighbors(process_rows, process_columns, my_row_coord, my_col_coord, my_rank);
     for(int i = 0; i < iterations; i++){
         //post recieves from
-        //up
+        //up (recieve a row from my upper neighbor)
+
         //down
         //left
         //right
@@ -165,6 +168,9 @@ int main(int argc, char** argv){
         MPI_Gatherv(tempArray, entries, MPI_CHAR, global_array, counts, displacements, MPI_CHAR, 0, MPI_COMM_WORLD);
         //let rank 0 print out the global array :)
         if(0 == my_rank){
+            cout << grid.upLeft << grid.up << grid.upRight << endl;
+            cout << grid.left << my_rank << grid.right << endl;
+            cout << grid.downLeft << grid.down << grid.downRight << endl; 
             grid.printGrid(global_array, total_rows, total_columns);
         }
         
