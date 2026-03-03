@@ -11,7 +11,8 @@ int main(int argc, char** argv){
     PartitionedGrid grid;
     //initialize mpi
     int total_processes = 0, my_rank = 0, iterations = 0, process_rows = 0, process_columns = 0, total_rows = 0, total_columns = 0;
-    int share_vector[5];
+    int share_vector[6];
+    string filename;
     char * global_array = nullptr;
     char * old_world = nullptr;
     char * new_world = nullptr;
@@ -27,7 +28,6 @@ int main(int argc, char** argv){
         process_columns = dims[1];
         cout << "Process rows, columns, " << process_rows << " " << process_columns << endl;
         //read from file
-        string filename;
         cout << "Enter a filename that contains your starting seed: ";
         cin >> filename;
         ifstream file(filename);
@@ -35,7 +35,6 @@ int main(int argc, char** argv){
             cout << "Error opening file";
         }
         //file is open now, read contents into global array
-
         string line = " "; 
         getline(file, line); //read first line that contains grid rows and columns
         stringstream ss(line);
@@ -84,6 +83,7 @@ int main(int argc, char** argv){
     int local_rows = 0, local_columns = 0;
     partitionSize(process_rows, total_rows, my_row_coord, local_rows);
     partitionSize(process_columns, total_columns, my_col_coord, local_columns);
+    
     int entries = local_rows * local_columns;
 
     //allocate local grid (add halos :-) )
@@ -102,27 +102,63 @@ int main(int argc, char** argv){
         }
     }
 
-    //gather entries at process 0 (for counts)
-    int recv_buf[total_processes];
-    MPI_Gather(&entries, 1, MPI_INT, recv_buf, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-
+    //gather at process 0
+    int recv_rows[total_processes];
+    int my_rows_no_halo = local_rows - 2;
+    MPI_Gather(&my_rows_no_halo, 1, MPI_INT, recv_rows, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    int recv_cols[total_processes];
+    int my_cols_no_halo = local_columns - 2;
+    MPI_Gather(&my_cols_no_halo, 1, MPI_INT, recv_cols, 1, MPI_INT, 0, MPI_COMM_WORLD);
     //process 0 has to scatter the global array according to displacement and counts that it can calculate
     int counts[total_processes];
     int displacements[total_processes];
+    MPI_Datatype subarray_types[total_processes];
+
+    //everyone post an irecieve for their array
+    MPI_Request req[total_processes + 1];
+    int numreq = 1;
+    MPI_Irecv(new_world, entries, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &req[0]);
     if(0 == my_rank){
-        //how many entries does each process get? what index does that start from?
-        counts[0] = recv_buf[0];
+        //how many entries does each process get? easy
+        counts[0] = recv_rows[0] * recv_cols[0];
         displacements[0] = 0;
         for(int i = 1; i < total_processes; i++){
-            counts[i] = recv_buf[i];
-            displacements[i] = displacements[i-1] + counts[i-1];
+            counts[i] = recv_rows[i] * recv_cols[i];
+        }
+        //but where does it start? worse.
+        int rowsBeforeMe = 0;
+        int colBeforeMe = 0;
+        int processIndex = 0;
+        int sizes[2] = {total_rows, total_columns};
+        int subsizes[2];
+        int starts[2];
+
+        for(int curProcRow = 0; curProcRow < process_rows; curProcRow++){
+            colBeforeMe = 0; //resets each row
+            //for each process row,
+            for(int curProcCol = 0; curProcCol < process_columns; curProcCol++){
+                subsizes[0] = recv_rows[processIndex];
+                subsizes[1] = recv_cols[processIndex];
+                starts[0] = rowsBeforeMe;
+                starts[1] = colBeforeMe;
+                MPI_Type_create_subarray(2, sizes, subsizes, starts, MPI_ORDER_C, MPI_CHAR, &subarray_types[processIndex]);
+                MPI_Type_commit(&subarray_types[processIndex]);
+                displacements[processIndex] = rowsBeforeMe * total_columns + colBeforeMe;
+                colBeforeMe += recv_cols[processIndex];
+                processIndex++;
+            }
+            rowsBeforeMe += recv_rows[processIndex - 1];
+        }
+
+        //okay... now we have a different subarray type to describe each subarray..
+        //lets send the pieces manually. scatterv wont work :( 
+        numreq = total_processes + 1;
+        for(int i = 0; i < total_processes; i++){
+            MPI_Isend(global_array, 1, subarray_types[i], i, 0, MPI_COMM_WORLD, &req[i+1]);
         }
     }
-
-    //scatterv here, put into newworld so that I can format it properly into old world (target destination)
-    MPI_Scatterv(global_array, counts, displacements, MPI_CHAR, new_world, entries , MPI_CHAR, 0, MPI_COMM_WORLD);
-
+    //waitall
+    MPI_Waitall(numreq, req, MPI_STATUSES_IGNORE);
     //load new world into old world
     //we must skip row 1, and last row, col 1 and last column :) those are halos
     int curEntry = 0;
@@ -132,15 +168,18 @@ int main(int argc, char** argv){
             curEntry++;
         }
     }
-
+    
     //set up loop
     //find my neighbors
     grid.setNeighbors(process_rows, process_columns, my_row_coord, my_col_coord, my_rank);
+    int innerRowSize = local_columns - 2;
+    MPI_Request req2[16];
     for(int i = 0; i < iterations; i++){
         //post recieves from
         //up (recieve a row from my upper neighbor)
-
-        //down
+        MPI_Irecv(&old_world[0 * local_columns + 1], innerRowSize , MPI_CHAR, grid.up, 1, MPI_COMM_WORLD, &req2[0]);
+        //from down
+        MPI_Irecv(&old_world[(local_rows - 1) * local_columns + 1], innerRowSize, MPI_CHAR, grid.down, 1, MPI_COMM_WORLD, &req2[2]);
         //left
         //right
         //up left 
@@ -150,7 +189,9 @@ int main(int argc, char** argv){
         
         //send to
         //up (take my row 1 (-edges) and send to bottom halo of upper neighbor)
+        MPI_Isend(&old_world[1 * local_columns + 1], innerRowSize, MPI_CHAR, grid.up, 1, MPI_COMM_WORLD, &req2[3]);
         //down (take my last row - 1 without edges) and send to top halo of lower neighbor)
+        MPI_Isend(&old_world[(local_rows - 2) * local_columns + 1], innerRowSize, MPI_CHAR, grid.down, 1, MPI_COMM_WORLD, &req2[1]);
         //left (strip my left column out and send to my left neighbors halo)
         //right (stip my right column out and send to my right neighbors halo)
         //up left (take my upper left inner corner, send to bottom right corner halo of upper left neighbor)
@@ -158,20 +199,21 @@ int main(int argc, char** argv){
         //down left (take my bottom left inner corner, send to upper right corner halo of bottom left neighbor)
         //down right (take my bottom right inner corner, send to the upper left corner halo of my bottom right neighbor)
 
+        MPI_Waitall(2, req2, MPI_STATUSES_IGNORE);
         //do updates (every cell)
 
         //swap old and new
 
         //strip halos off to gather
+        if(0 == my_rank){
+            grid.printGrid(old_world, local_rows, local_columns);
+        }
         grid.stripHalo(tempArray, old_world, local_rows, local_columns); //eventually change to new_world
-        //gather
-        MPI_Gatherv(tempArray, entries, MPI_CHAR, global_array, counts, displacements, MPI_CHAR, 0, MPI_COMM_WORLD);
+        //gather (broken now)
+       
         
         //let rank 0 print out the global array :)
         if(0 == my_rank){
-            cout << grid.upLeft << grid.up << grid.upRight << endl;
-            cout << grid.left << my_rank << grid.right << endl;
-            cout << grid.downLeft << grid.down << grid.downRight << endl; 
             grid.printGrid(global_array, total_rows, total_columns);
         }
         

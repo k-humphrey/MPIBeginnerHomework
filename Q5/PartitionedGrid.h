@@ -79,8 +79,6 @@
         toRow = row_coord;
         toCol = (col_coord - 1 + process_columns) % process_columns;
         right = toRow * process_columns + toCol;
-
-        //corner is increment or decrement the column / row and then wrap lol
         
     }
 
