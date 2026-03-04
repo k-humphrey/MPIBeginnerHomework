@@ -1,5 +1,6 @@
 #include <iostream>
 #include <mpi.h>
+#include <vector>
 #include "PartitionedGrid.h"
 
 using namespace std;
@@ -33,6 +34,7 @@ int main(int argc, char** argv){
         ifstream file(filename);
         if(!file.is_open()){
             cout << "Error opening file";
+            exit(1);
         }
         //file is open now, read contents into global array
         string line = " "; 
@@ -115,8 +117,11 @@ int main(int argc, char** argv){
     MPI_Datatype subarray_types[total_processes];
 
     //everyone post an irecieve for their array
-    MPI_Request req[total_processes + 1];
     int numreq = 1;
+    if(0 == my_rank){
+        numreq = total_processes + 1; 
+    }
+    std::vector<MPI_Request> req(numreq);
     MPI_Irecv(new_world, entries, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &req[0]);
     if(0 == my_rank){
         //how many entries does each process get? easy
@@ -152,13 +157,13 @@ int main(int argc, char** argv){
 
         //okay... now we have a different subarray type to describe each subarray..
         //lets send the pieces manually. scatterv wont work :( 
-        numreq = total_processes + 1;
+       
         for(int i = 0; i < total_processes; i++){
             MPI_Isend(global_array, 1, subarray_types[i], i, 0, MPI_COMM_WORLD, &req[i+1]);
         }
     }
     //waitall
-    MPI_Waitall(numreq, req, MPI_STATUSES_IGNORE);
+    MPI_Waitall(numreq, req.data(), MPI_STATUSES_IGNORE);
     //load new world into old world
     //we must skip row 1, and last row, col 1 and last column :) those are halos
     int curEntry = 0;
@@ -263,7 +268,12 @@ int main(int argc, char** argv){
     delete[] tempArray;
     if(0 == my_rank){
         delete[] global_array;
+        for(int i = 0; i < total_processes; i++){
+            MPI_Type_free(&subarray_types[i]);
+        }
     }
+    
+    MPI_Type_free(&column_type);
     MPI_Finalize();
     
 }
