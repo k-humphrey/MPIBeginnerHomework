@@ -1,7 +1,4 @@
-Ideas:
-- print generations to check output.
-
-- ghost cells, and possibly other data types to achieve communication.
+Idea:
 
 Class Grid
 functions for finding neighbors

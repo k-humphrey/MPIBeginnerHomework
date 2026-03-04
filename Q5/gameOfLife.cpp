@@ -228,14 +228,29 @@ int main(int argc, char** argv){
         //strip halos off to gather
         grid.stripHalo(tempArray, new_world, local_rows, local_columns); 
         //gather doesnt work anymore.
-        
+        if (my_rank != 0) { //send temp array to rank 0 
+            MPI_Send(tempArray, (my_rows_no_halo * my_cols_no_halo), MPI_CHAR, 0, 8, MPI_COMM_WORLD);
+        } else {
+            //rank 0 has to copy its own temp array into global array
+            int curIndex = 0;
+            for(int curRow = 0; curRow < my_rows_no_halo; curRow++) {
+                for(int curCol = 0; curCol < my_cols_no_halo; curCol++) {
+                    global_array[curRow * total_columns +  curCol] = tempArray[curIndex++];
+                }
+            }
+
+            //then rank 0 can just recieve using the subarray types from earlier.
+            for (int i = 1; i < total_processes; i++) {
+                MPI_Recv(global_array, 1, subarray_types[i], i, 8, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
+        }
 
         
         //let rank 0 print out the global array :)
-        if(1 == my_rank){
+        if(0 == my_rank){
             cout << "Iteration " << i << endl << endl; 
-            grid.printGrid(new_world ,local_rows, local_columns);
-            //grid.printGrid(global_array, total_rows, total_columns);
+            //grid.printGrid(new_world ,local_rows, local_columns);
+            grid.printGrid(global_array, total_rows, total_columns);
         }
         MPI_Barrier(MPI_COMM_WORLD);
     }
