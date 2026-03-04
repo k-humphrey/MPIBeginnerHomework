@@ -170,54 +170,74 @@ int main(int argc, char** argv){
     }
     
     //set up loop
-    //find my neighbors
+    //find my neighbors, and get indexing out of the way
     grid.setNeighbors(process_rows, process_columns, my_row_coord, my_col_coord, my_rank);
+    grid.setIndexes(local_rows, local_columns);
     int innerRowSize = local_columns - 2;
     MPI_Request req2[16];
+    MPI_Datatype column_type;
+    MPI_Type_vector(local_rows - 2, 1, local_columns, MPI_CHAR, &column_type);
+    MPI_Type_commit(&column_type);
     for(int i = 0; i < iterations; i++){
         //post recieves from
-        //up (recieve a row from my upper neighbor)
-        MPI_Irecv(&old_world[0 * local_columns + 1], innerRowSize , MPI_CHAR, grid.up, 1, MPI_COMM_WORLD, &req2[0]);
+        //from up 
+        MPI_Irecv(&old_world[grid.topRowHalo], innerRowSize , MPI_CHAR, grid.up, 0, MPI_COMM_WORLD, &req2[0]);
         //from down
-        MPI_Irecv(&old_world[(local_rows - 1) * local_columns + 1], innerRowSize, MPI_CHAR, grid.down, 1, MPI_COMM_WORLD, &req2[2]);
+        MPI_Irecv(&old_world[grid.bottomRowHalo], innerRowSize, MPI_CHAR, grid.down, 1, MPI_COMM_WORLD, &req2[2]);
         //left
+        MPI_Irecv(&old_world[grid.leftColHalo], 1, column_type, grid.left, 2, MPI_COMM_WORLD, &req2[4]);
         //right
+        MPI_Irecv(&old_world[grid.rightColHalo], 1, column_type, grid.right, 3, MPI_COMM_WORLD, &req2[6]);
         //up left 
+        MPI_Irecv(&old_world[grid.topLeftCorner], 1, MPI_CHAR, grid.upLeft, 4, MPI_COMM_WORLD, &req2[8]);
         //up right
+        MPI_Irecv(&old_world[grid.topRightCorner], 1, MPI_CHAR, grid.upRight, 5, MPI_COMM_WORLD, &req2[10]);
         //down left
+        MPI_Irecv(&old_world[grid.bottomLeftCorner], 1, MPI_CHAR, grid.downLeft, 6, MPI_COMM_WORLD, &req2[12]);
         //down right
+        MPI_Irecv(&old_world[grid.bottomRightCorner], 1, MPI_CHAR, grid.downRight, 7, MPI_COMM_WORLD, &req2[14]);
+
         
         //send to
-        //up (take my row 1 (-edges) and send to bottom halo of upper neighbor)
-        MPI_Isend(&old_world[1 * local_columns + 1], innerRowSize, MPI_CHAR, grid.up, 1, MPI_COMM_WORLD, &req2[3]);
-        //down (take my last row - 1 without edges) and send to top halo of lower neighbor)
-        MPI_Isend(&old_world[(local_rows - 2) * local_columns + 1], innerRowSize, MPI_CHAR, grid.down, 1, MPI_COMM_WORLD, &req2[1]);
-        //left (strip my left column out and send to my left neighbors halo)
-        //right (stip my right column out and send to my right neighbors halo)
-        //up left (take my upper left inner corner, send to bottom right corner halo of upper left neighbor)
-        //up right (take my upper right inner corner, send to bottom left corner halo of upper right neighbor)
-        //down left (take my bottom left inner corner, send to upper right corner halo of bottom left neighbor)
+        //up
+        MPI_Isend(&old_world[grid.topRowInner], innerRowSize, MPI_CHAR, grid.up, 1, MPI_COMM_WORLD, &req2[3]);
+        //down 
+        MPI_Isend(&old_world[grid.bottomRowInner], innerRowSize, MPI_CHAR, grid.down, 0, MPI_COMM_WORLD, &req2[1]);
+        //left 
+        MPI_Isend(&old_world[grid.leftColInner], 1, column_type, grid.left, 3, MPI_COMM_WORLD, &req2[7]);
+        //right 
+        MPI_Isend(&old_world[grid.rightColInner], 1 , column_type, grid.right, 2, MPI_COMM_WORLD, &req2[5]);
+        //up left 
+        MPI_Isend(&old_world[grid.topLeftInnerCorner], 1, MPI_CHAR, grid.upLeft, 7,  MPI_COMM_WORLD, &req2[13]);
+        //up right 
+        MPI_Isend(&old_world[grid.topRightInnerCorner], 1, MPI_CHAR, grid.upRight, 6,  MPI_COMM_WORLD, &req2[15]);
+        //down left 
+        MPI_Isend(&old_world[grid.bottomLeftInnerCorner], 1, MPI_CHAR, grid.downLeft, 5,  MPI_COMM_WORLD, &req2[11]);
         //down right (take my bottom right inner corner, send to the upper left corner halo of my bottom right neighbor)
+        MPI_Isend(&old_world[grid.bottomRightInnerCorner], 1, MPI_CHAR, grid.downRight, 4,  MPI_COMM_WORLD, &req2[9]);
 
-        MPI_Waitall(2, req2, MPI_STATUSES_IGNORE);
+        MPI_Waitall(16, req2, MPI_STATUSES_IGNORE);
+
         //do updates (every cell)
-
+        grid.doUpdates(old_world, new_world, local_rows, local_columns);
         //swap old and new
+        char *tmp = old_world;
+        old_world = new_world;
+        new_world = tmp;
 
         //strip halos off to gather
-        if(0 == my_rank){
-            grid.printGrid(old_world, local_rows, local_columns);
-        }
-        grid.stripHalo(tempArray, old_world, local_rows, local_columns); //eventually change to new_world
-        //gather (broken now)
-       
-        
-        //let rank 0 print out the global array :)
-        if(0 == my_rank){
-            grid.printGrid(global_array, total_rows, total_columns);
-        }
+        grid.stripHalo(tempArray, new_world, local_rows, local_columns); 
+        //gather doesnt work anymore.
         
 
+        
+        //let rank 0 print out the global array :)
+        if(1 == my_rank){
+            cout << "Iteration " << i << endl << endl; 
+            grid.printGrid(new_world ,local_rows, local_columns);
+            //grid.printGrid(global_array, total_rows, total_columns);
+        }
+        MPI_Barrier(MPI_COMM_WORLD);
     }
     
    
